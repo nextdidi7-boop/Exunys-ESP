@@ -1,0 +1,217 @@
+-- LocalScript (StarterGui)
+
+local Players = game:GetService("Players")
+
+local Lighting = game:GetService("Lighting")
+
+local player = Players.LocalPlayer
+
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- ScreenGui
+
+local screenGui = Instance.new("ScreenGui")
+
+screenGui.Name = "ClayBoostUI"
+
+screenGui.ResetOnSpawn = false
+
+screenGui.Parent = playerGui
+
+-------------------------------------------------------------------
+
+-- ปุ่มกด (ลากได้)
+
+-------------------------------------------------------------------
+
+local button = Instance.new("TextButton")
+
+button.Name = "ClayBoostButton"
+
+button.Size = UDim2.new(0, 150, 0, 40)
+
+button.Position = UDim2.new(0, 10, 0, 10)
+
+button.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+
+button.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+button.Text = "ภาพดินน้ำมัน (ปิด)"
+
+button.TextScaled = true
+
+button.Font = Enum.Font.GothamBold
+
+button.Active = true
+
+button.Draggable = true
+
+button.Parent = screenGui
+
+local stroke = Instance.new("UIStroke")
+
+stroke.Thickness = 1
+
+stroke.Parent = button
+
+-------------------------------------------------------------------
+
+-- ฟังก์ชัน “โหมดดินน้ำมัน”
+
+-------------------------------------------------------------------
+
+local functionEnabled = false
+
+local function applyBoost()
+
+    -- ทำให้ภาพซีดแบบดินน้ำมัน
+
+    Lighting.GlobalShadows = false
+
+    Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+
+    Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+
+    Lighting.Brightness = 1
+
+    Lighting.EnvironmentDiffuseScale = 0
+
+    Lighting.EnvironmentSpecularScale = 0
+
+    -- ลดความละเอียด
+
+    settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+
+    -- ปิดพวก Particle และเอฟเฟกต์
+
+    for _, v in ipairs(workspace:GetDescendants()) do
+
+        if v:IsA("ParticleEmitter") or v:IsA("Trail") then
+
+            v.Enabled = false
+
+        end
+
+    end
+
+    -- ตัด Texture / Decal ให้เรียบ
+
+    for _, v in ipairs(workspace:GetDescendants()) do
+
+        if v:IsA("Decal") or v:IsA("Texture") then
+
+            v.Transparency = 1
+
+        end
+
+        if v:IsA("MeshPart") then
+
+            v.TextureID = ""
+
+        end
+
+        if v:IsA("BasePart") then
+
+            v.Material = Enum.Material.SmoothPlastic
+
+            v.Color = Color3.fromRGB(230, 230, 230)
+
+        end
+
+    end
+
+    -- ตัวละครผู้เล่นกลายเป็น “สีดินน้ำมัน”
+
+    if player.Character then
+
+        for _, part in ipairs(player.Character:GetDescendants()) do
+
+            if part:IsA("BasePart") then
+
+                part.Material = Enum.Material.SmoothPlastic
+
+                part.Color = Color3.fromRGB(230, 230, 230)
+
+            end
+
+            if part:IsA("Decal") then
+
+                part.Transparency = 1
+
+            end
+
+        end
+
+    end
+
+end
+
+-------------------------------------------------------------------
+
+-- ปิดโหมดดินน้ำมัน
+
+-------------------------------------------------------------------
+
+local function removeBoost()
+
+    Lighting.GlobalShadows = true
+
+    Lighting.Ambient = Color3.fromRGB(128, 128, 128)
+
+    Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+
+    Lighting.Brightness = 2
+
+    Lighting.EnvironmentDiffuseScale = 1
+
+    Lighting.EnvironmentSpecularScale = 1
+
+    settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
+
+    for _, v in ipairs(workspace:GetDescendants()) do
+
+        if v:IsA("ParticleEmitter") or v:IsA("Trail") then
+
+            v.Enabled = true
+
+        end
+
+        if v:IsA("Decal") or v:IsA("Texture") then
+
+            v.Transparency = 0
+
+        end
+
+    end
+
+end
+
+-------------------------------------------------------------------
+
+-- ปุ่มเปิด–ปิด
+
+-------------------------------------------------------------------
+
+button.MouseButton1Click:Connect(function()
+
+    functionEnabled = not functionEnabled
+
+    if functionEnabled then
+
+        button.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+
+        button.Text = "ภาพดินน้ำมัน (เปิด)"
+
+        applyBoost()
+
+    else
+
+        button.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+
+        button.Text = "ภาพดินน้ำมัน (ปิด)"
+
+        removeBoost()
+
+    end
+
+end)
