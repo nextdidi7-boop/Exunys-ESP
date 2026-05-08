@@ -1,0 +1,430 @@
+--[[ 
+    WindUI | SILENT AIM + ESP (AIM COLOR)
+    + RAINBOW OUTLINE ESP (IMAGE STYLE)
+    + CAMERA LOCK MODE (NO BULLET REDIRECT)
+    + FOV 360 MODE
+    + AUTO FIRE (SAFE TAP | MOVE & JUMP OK)
+    + HP BAR ESP
+    + HITBOX BUTTON
+    AUTO HYBRID HEAD LOCK
+    ONE FILE FINAL | AUTO CLEAN
+]]
+
+--------------------------------------------------
+-- Load WindUI
+--------------------------------------------------
+local WindUI
+do
+    local ok, result = pcall(function()
+        return require("./src/Init")
+    end)
+    WindUI = ok and result or loadstring(game:HttpGet(
+        "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"
+    ))()
+end
+
+--------------------------------------------------
+-- Services
+--------------------------------------------------
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+--------------------------------------------------
+-- States
+--------------------------------------------------
+local SilentAim   = false
+local CAMERA_LOCK = false
+local ESP_ENABLED = false
+local RAINBOW_ESP = false
+local IGNORE_WALL = false
+local FOV_360     = false
+local AUTO_FIRE   = false
+local HP_ESP      = false
+
+local TeamCheck   = true
+local MaxDistance = 600
+local FOV         = 120
+
+local CurrentTarget = nil
+local ESP_CACHE = {}
+local HIGHLIGHT_CACHE = {}
+
+-- Hitbox
+local HitboxEnabled = false
+local HitboxSize = 32
+
+--------------------------------------------------
+-- Utility
+--------------------------------------------------
+local function isAlive(char)
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    return hum and hum.Health > 0
+end
+
+local function isTeammate(p)
+    if not TeamCheck then return false end
+    if not LocalPlayer.Team or not p.Team then return false end
+    return p.Team == LocalPlayer.Team
+end
+
+local function rainbowColor(speed)
+    local t = tick() * speed
+    return Color3.fromHSV(t % 1, 1, 1)
+end
+
+local function isCharValid(char)
+    return char and char.Parent and char:IsDescendantOf(workspace)
+end
+
+--------------------------------------------------
+-- Visibility
+--------------------------------------------------
+local RayParams = RaycastParams.new()
+RayParams.FilterType = Enum.RaycastFilterType.Blacklist
+RayParams.IgnoreWater = true
+
+local function isVisible(part, char)
+    RayParams.FilterDescendantsInstances = {LocalPlayer.Character, char}
+    local origin = Camera.CFrame.Position
+    local dir = part.Position - origin
+    return not workspace:Raycast(origin, dir, RayParams)
+end
+
+--------------------------------------------------
+-- Drawing
+--------------------------------------------------
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 2
+FOVCircle.Filled = false
+FOVCircle.Color = Color3.fromRGB(255,255,0)
+
+local AimLine = Drawing.new("Line")
+AimLine.Thickness = 2
+AimLine.Color = Color3.fromRGB(255,0,0)
+
+--------------------------------------------------
+-- CLEAN
+--------------------------------------------------
+local function clearHighlight(char)
+    if HIGHLIGHT_CACHE[char] then
+        pcall(function()
+            HIGHLIGHT_CACHE[char]:Destroy()
+        end)
+        HIGHLIGHT_CACHE[char] = nil
+    end
+end
+
+local function clearESP(char)
+    local cache = ESP_CACHE[char]
+    if cache then
+        pcall(function()
+            if cache.Text then
+                cache.Text.Visible = false
+                cache.Text:Remove()
+            end
+            if cache.HP then
+                cache.HP.Visible = false
+                cache.HP:Remove()
+            end
+        end)
+        ESP_CACHE[char] = nil
+    end
+    clearHighlight(char)
+end
+
+--------------------------------------------------
+-- ESP TEXT + HP
+--------------------------------------------------
+local function ESP_SYSTEM()
+    if not ESP_ENABLED and not HP_ESP then
+        for char,_ in pairs(ESP_CACHE) do
+            clearESP(char)
+        end
+        return
+    end
+
+    for _,p in ipairs(Players:GetPlayers()) do
+        local char = p.Character
+        if p ~= LocalPlayer
+        and char and isCharValid(char)
+        and isAlive(char) 
+        and (not isTeammate(p) or not TeamCheck) then
+
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if not hrp then clearESP(char) continue end
+
+            local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+            if dist > MaxDistance then
+                if ESP_CACHE[char] then 
+                    if ESP_CACHE[char].Text then ESP_CACHE[char].Text.Visible = false end
+                    if ESP_CACHE[char].HP then ESP_CACHE[char].HP.Visible = false end
+                end
+                continue
+            end
+
+            if not ESP_CACHE[char] then
+                local t = Drawing.new("Text")
+                t.Center = true
+                t.Outline = true
+                t.Font = 2
+                t.Size = 14
+
+                local hp = Drawing.new("Line")
+                hp.Thickness = 3
+                hp.Color = Color3.fromRGB(0,255,0)
+
+                ESP_CACHE[char] = {Text = t, HP = hp}
+            end
+
+            local txt = ESP_CACHE[char].Text
+            local hp = ESP_CACHE[char].HP
+            local pos, on = Camera:WorldToViewportPoint(hrp.Position)
+            if on then
+                if ESP_ENABLED then
+                    txt.Text = p.Name.." ["..math.floor(dist).."m]"
+                    txt.Position = Vector2.new(pos.X, pos.Y - 28)
+                    txt.Color = (CurrentTarget and CurrentTarget:IsDescendantOf(char))
+                        and Color3.fromRGB(255,60,60)
+                        or Color3.fromRGB(255,255,255)
+                    txt.Visible = true
+                else
+                    txt.Visible = false
+                end
+
+                if HP_ESP and hum then
+                    local hpRatio = math.clamp(hum.Health / hum.MaxHealth,0,1)
+                    hp.From = Vector2.new(pos.X - 20, pos.Y - 12)
+                    hp.To = Vector2.new(pos.X - 20 + 40 * hpRatio, pos.Y - 12)
+                    hp.Color = Color3.fromRGB(255*(1-hpRatio),255*hpRatio,0)
+                    hp.Visible = true
+                else
+                    hp.Visible = false
+                end
+            else
+                txt.Visible = false
+                hp.Visible = false
+            end
+        else
+            if char then clearESP(char) end
+        end
+    end
+end
+
+--------------------------------------------------
+-- RAINBOW OUTLINE ESP
+--------------------------------------------------
+local function RAINBOW_ESP_SYSTEM()
+    if not RAINBOW_ESP then
+        for char,_ in pairs(HIGHLIGHT_CACHE) do
+            clearHighlight(char)
+        end
+        return
+    end
+
+    for _,p in ipairs(Players:GetPlayers()) do
+        local char = p.Character
+        if p ~= LocalPlayer
+        and char and isCharValid(char)
+        and isAlive(char)
+        and (not isTeammate(p) or not TeamCheck) then
+
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if not hrp or (Camera.CFrame.Position - hrp.Position).Magnitude > MaxDistance then
+                clearHighlight(char)
+                continue
+            end
+
+            if not HIGHLIGHT_CACHE[char] then
+                local h = Instance.new("Highlight")
+                h.Adornee = char
+                h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                h.FillTransparency = 1
+                h.OutlineTransparency = 0
+                h.Parent = workspace
+                HIGHLIGHT_CACHE[char] = h
+            end
+
+            HIGHLIGHT_CACHE[char].OutlineColor = rainbowColor(0.25)
+        else
+            if char then clearHighlight(char) end
+        end
+    end
+end
+
+--------------------------------------------------
+-- TARGET SYSTEM
+--------------------------------------------------
+local function getTarget()
+    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    local closest, target = math.huge, nil
+
+    for _,p in ipairs(Players:GetPlayers()) do
+        local char = p.Character
+        if p ~= LocalPlayer and char and isAlive(char) and (not isTeammate(p) or not TeamCheck) then
+            local head = char:FindFirstChild("Head")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+
+            if head and hrp
+            and (Camera.CFrame.Position - hrp.Position).Magnitude <= MaxDistance
+            and (IGNORE_WALL or isVisible(head, char)) then
+
+                local pos, on = Camera:WorldToViewportPoint(head.Position)
+
+                if FOV_360 then
+                    local d = (Camera.CFrame.Position - head.Position).Magnitude
+                    if d < closest then
+                        closest = d
+                        target = head
+                    end
+                elseif on then
+                    local dist2D = (Vector2.new(pos.X,pos.Y) - center).Magnitude
+                    if dist2D < FOV and dist2D < closest then
+                        closest = dist2D
+                        target = head
+                    end
+                end
+            end
+        end
+    end
+    return target
+end
+
+--------------------------------------------------
+-- AUTO FIRE (SAFE TAP | AIM CHECK)
+--------------------------------------------------
+local FIRE_COOLDOWN = 0.08
+local lastFire = 0
+
+local RayParamsAF = RaycastParams.new()
+RayParamsAF.FilterType = Enum.RaycastFilterType.Blacklist
+RayParamsAF.IgnoreWater = true
+
+local function isAimingEnemy_AF()
+    local char = LocalPlayer.Character
+    if not char then return false end
+
+    RayParamsAF.FilterDescendantsInstances = {char}
+
+    local origin = Camera.CFrame.Position
+    local dir = Camera.CFrame.LookVector * MaxDistance
+    local result = workspace:Raycast(origin, dir, RayParamsAF)
+    if not result then return false end
+
+    local hitChar = result.Instance:FindFirstAncestorOfClass("Model")
+    if not hitChar then return false end
+
+    local hum = hitChar:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+
+    local p = Players:GetPlayerFromCharacter(hitChar)
+    if not p or p == LocalPlayer then return false end
+    if TeamCheck and isTeammate(p) then return false end
+
+    return true
+end
+
+local function tapFire()
+    VirtualInputManager:SendMouseButtonEvent(0,0,0,true,game,0)
+    task.wait(0.01)
+    VirtualInputManager:SendMouseButtonEvent(0,0,0,false,game,0)
+end
+
+--------------------------------------------------
+-- CAMERA LOCK
+--------------------------------------------------
+local function cameraLookAt(part)
+    Camera.CFrame = CFrame.new(Camera.CFrame.Position, part.Position)
+end
+
+--------------------------------------------------
+-- RENDER LOOP
+--------------------------------------------------
+RunService.RenderStepped:Connect(function()
+    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+
+    FOVCircle.Position = center
+    FOVCircle.Radius = FOV
+    FOVCircle.Visible = (SilentAim or CAMERA_LOCK) and not FOV_360
+
+    AimLine.Visible = false
+    CurrentTarget = nil
+
+    if SilentAim or CAMERA_LOCK or AUTO_FIRE then
+        CurrentTarget = getTarget()
+    end
+
+    if CAMERA_LOCK and CurrentTarget then
+        cameraLookAt(CurrentTarget)
+    end
+
+    if SilentAim and not CAMERA_LOCK and CurrentTarget then
+        local p = Camera:WorldToViewportPoint(CurrentTarget.Position)
+        AimLine.From = center
+        AimLine.To = Vector2.new(p.X,p.Y)
+        AimLine.Visible = true
+    end
+
+    -- 🔥 AUTO FIRE SAFE
+    if AUTO_FIRE and CurrentTarget and isAimingEnemy_AF() then
+        if tick() - lastFire >= FIRE_COOLDOWN then
+            lastFire = tick()
+            tapFire()
+        end
+    end
+
+    ESP_SYSTEM()
+    RAINBOW_ESP_SYSTEM()
+
+    -- Hitbox
+    if HitboxEnabled then
+        for _, v in pairs(Players:GetPlayers()) do
+            if v ~= LocalPlayer then
+                pcall(function()
+                    local hrp = v.Character and v.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        hrp.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
+                        hrp.Transparency = 0.7
+                        hrp.BrickColor = BrickColor.new("Really blue")
+                        hrp.Material = Enum.Material.Neon
+                        hrp.CanCollide = false
+                    end
+                end)
+            end
+        end
+    end
+end)
+
+--------------------------------------------------
+-- UI
+--------------------------------------------------
+local Window = WindUI:CreateWindow({
+    Title="Thug Hunters💢👿",
+    Folder="WindHub",
+    OpenButton={Title="Thug Hunters💢👿",Enabled=true}
+})
+
+local Main = Window:Tab({Title="เมนู(กด)"})
+
+Main:Toggle({Title="🔫ล็อค(บังคับกระสุน)", Callback=function(v) SilentAim=v end})
+Main:Toggle({Title="🎯ล็อค(หันจอไปหัว)", Callback=function(v) CAMERA_LOCK=v end})
+Main:Toggle({Title="🧱ล็อคหัวไม่เช็คกำแพง", Callback=function(v) IGNORE_WALL=v end})
+Main:Toggle({Title="🌐FOV 360°", Callback=function(v) FOV_360=v end})
+Main:Toggle({Title="🔥ยิงอัตโนมัติ (อย่าหาทำ)", Callback=function(v) AUTO_FIRE=v end})
+Main:Toggle({Title="👑ESP(ชื่อ)", Callback=function(v) ESP_ENABLED=v end})
+Main:Toggle({Title="🩸ESP(HP)", Callback=function(v) HP_ESP=v end})
+Main:Toggle({Title="👹ESP(กรอบสีรุ้ง)", Callback=function(v) RAINBOW_ESP=v end})
+Main:Button({Title="Hitbox", Callback=function()
+    HitboxEnabled = not HitboxEnabled
+    if HitboxEnabled then
+        Main:SetTitle("ปิด Hitbox")
+    else
+        Main:SetTitle("Hitbox")
+    end
+end})
+Main:Toggle({Title="🧑‍🤝‍🧑ไม่ล็อคทีม", Default=true, Callback=function(v) TeamCheck=v end})
+Main:Slider({Title="🎯FOV", Value={Min=40,Max=500,Default=FOV}, Callback=function(v) FOV=v end})
+Main:Slider({Title="📏ระยะ", Value={Min=100,Max=5000,Default=MaxDistance}, Callback=function(v) MaxDistance=v end})
